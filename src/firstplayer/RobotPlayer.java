@@ -1,6 +1,7 @@
-package examplefuncsplayer;
+package firstplayer;
 
 import battlecode.common.*;
+
 import java.util.Random;
 
 /**
@@ -9,6 +10,8 @@ import java.util.Random;
  * is created!
  */
 public strictfp class RobotPlayer {
+
+    static int NONE_SENTINEL = 65535;
 
     /**
      * We will use this variable to count the number of turns this robot has been alive.
@@ -37,6 +40,8 @@ public strictfp class RobotPlayer {
         Direction.NORTHWEST,
     };
 
+    static Direction saved_direction = directions[rng.nextInt(directions.length)];
+
     /**
      * run() is the method that is called when a robot is instantiated in the Battlecode world.
      * It is like the main function for your robot. If this method returns, the robot dies!
@@ -47,12 +52,11 @@ public strictfp class RobotPlayer {
     @SuppressWarnings("unused")
     public static void run(RobotController rc) throws GameActionException {
 
-        // Hello world! Standard output is very useful for debugging.
-        // Everything you say here will be directly viewable in your terminal when you run a match!
-        // System.out.println("I'm a " + rc.getType() + " and I just got created! I have health " + rc.getHealth());
-
-        // You can also use indicators to save debug notes in replays.
-        // rc.setIndicatorString("Hello world!");
+        if (turnCount == 0) {
+            for (int i = 0; i < 64; i++) {
+                rc.writeSharedArray(i, NONE_SENTINEL);
+            }
+        }
 
         while (true) {
             // This code runs during the entire lifespan of the robot, which is why it is in an infinite
@@ -157,22 +161,80 @@ public strictfp class RobotPlayer {
      * This code is wrapped inside the infinite loop in run(), so it is called once per turn.
      */
     static void runSoldier(RobotController rc) throws GameActionException {
-        // Try to attack someone
-        int radius = rc.getType().actionRadiusSquared;
-        Team opponent = rc.getTeam().opponent();
-        RobotInfo[] enemies = rc.senseNearbyRobots(radius, opponent);
-        if (enemies.length > 0) {
-            MapLocation toAttack = enemies[0].location;
-            if (rc.canAttack(toAttack)) {
-                rc.attack(toAttack);
+        int target_x = rc.readSharedArray(0);
+        int target_y = rc.readSharedArray(1);
+        int target_priority = rc.readSharedArray(2);
+        int radius = rc.getType().visionRadiusSquared;
+
+        // if target is in range but no longer valid, update shared info
+        if (target_x != NONE_SENTINEL) {
+            MapLocation target_location = new MapLocation(target_x, target_y);
+            if (target_location.distanceSquaredTo(rc.getLocation()) <= radius) {
+                RobotInfo target_robot = rc.senseRobotAtLocation(target_location);
+                if (target_robot == null || target_robot.getTeam() == rc.getTeam()) {
+                    target_x = NONE_SENTINEL;
+                    rc.writeSharedArray(0, target_x);
+                    target_y = NONE_SENTINEL;
+                    rc.writeSharedArray(1, target_y);
+                    target_priority = 10;
+                    rc.writeSharedArray(2, 10);
+                }
             }
         }
 
-        // Also try to move randomly.
-        Direction dir = directions[rng.nextInt(directions.length)];
-        if (rc.canMove(dir)) {
-            rc.move(dir);
-            // System.out.println("I moved!");
+        // check for better targets
+        RobotInfo[] enemies = rc.senseNearbyRobots(radius, rc.getTeam().opponent());
+        for (int i = 0; i < enemies.length; i++) {
+            RobotInfo enemy = enemies[i];
+            int priority;
+            if (enemy.getType() == RobotType.WATCHTOWER) {
+                priority = 1;
+            }
+            else if (enemy.getType() == RobotType.SAGE) {
+                priority = 2;
+            }
+            else if (enemy.getType() == RobotType.SOLDIER) {
+                priority = 3;
+            }
+            else if (enemy.getType() == RobotType.ARCHON) {
+                priority = 4;
+            }
+            else {
+                priority = 5;
+            }
+            if (priority < target_priority) {
+                target_x = enemy.location.x;
+                rc.writeSharedArray(0, target_x);
+                target_y = enemy.location.y;
+                rc.writeSharedArray(1, target_y);
+                target_priority = priority;
+                rc.writeSharedArray(2, priority);
+            }
+        }
+
+        // move towards or attack target
+        if (target_x != NONE_SENTINEL) {
+            MapLocation  target_location = new MapLocation(target_x, target_y);
+            int attack_radius = rc.getType().actionRadiusSquared;
+            if (target_location.distanceSquaredTo(rc.getLocation()) > attack_radius) {
+                Direction direction_to = rc.getLocation().directionTo(target_location);
+                if (rc.canMove(direction_to)) {
+                    rc.move(direction_to);
+                }
+            }
+            else {
+                if (rc.canAttack(target_location)) {
+                    rc.attack(target_location);
+                }
+            }
+        }
+        else { // or move in a line if no target
+            if (rc.canMove(saved_direction)) {
+                rc.move(saved_direction);
+            }
+            else if (!rc.onTheMap(rc.getLocation().add(saved_direction))) {
+                saved_direction = directions[rng.nextInt(directions.length)];
+            }
         }
     }
 }
