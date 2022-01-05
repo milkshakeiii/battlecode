@@ -182,7 +182,7 @@ public strictfp class RobotPlayer {
             }
         }
 
-        // check for better targets
+        // check for better targets and update shared info if a better target is found
         RobotInfo[] enemies = rc.senseNearbyRobots(radius, rc.getTeam().opponent());
         for (int i = 0; i < enemies.length; i++) {
             RobotInfo enemy = enemies[i];
