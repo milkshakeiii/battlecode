@@ -164,12 +164,13 @@ public strictfp class RobotPlayer {
         int target_x = rc.readSharedArray(0);
         int target_y = rc.readSharedArray(1);
         int target_priority = rc.readSharedArray(2);
-        int radius = rc.getType().visionRadiusSquared;
+        int vision_radius = rc.getType().visionRadiusSquared;
+        int attack_radius = rc.getType().actionRadiusSquared;
 
         // if target is in range but no longer valid, update shared info
         if (target_x != NONE_SENTINEL) {
             MapLocation target_location = new MapLocation(target_x, target_y);
-            if (target_location.distanceSquaredTo(rc.getLocation()) <= radius) {
+            if (target_location.distanceSquaredTo(rc.getLocation()) <= vision_radius) {
                 RobotInfo target_robot = rc.senseRobotAtLocation(target_location);
                 if (target_robot == null || target_robot.getTeam() == rc.getTeam()) {
                     target_x = NONE_SENTINEL;
@@ -183,9 +184,16 @@ public strictfp class RobotPlayer {
         }
 
         // check for better targets and update shared info if a better target is found
-        RobotInfo[] enemies = rc.senseNearbyRobots(radius, rc.getTeam().opponent());
+        RobotInfo[] enemies = rc.senseNearbyRobots(vision_radius, rc.getTeam().opponent());
+        RobotInfo nearby_enemy = null; // also get a backup target
         for (int i = 0; i < enemies.length; i++) {
             RobotInfo enemy = enemies[i];
+
+            if (rc.getLocation().distanceSquaredTo(enemy.location) <= attack_radius
+                    && (nearby_enemy == null || enemy.getHealth() < nearby_enemy.getHealth())) {
+                nearby_enemy = enemy;
+            }
+
             int priority;
             if (enemy.getType() == RobotType.WATCHTOWER) {
                 priority = 1;
@@ -215,17 +223,15 @@ public strictfp class RobotPlayer {
         // move towards or attack target
         if (target_x != NONE_SENTINEL) {
             MapLocation  target_location = new MapLocation(target_x, target_y);
-            int attack_radius = rc.getType().actionRadiusSquared;
-            if (target_location.distanceSquaredTo(rc.getLocation()) > attack_radius) {
-                Direction direction_to = rc.getLocation().directionTo(target_location);
-                if (rc.canMove(direction_to)) {
-                    rc.move(direction_to);
-                }
+            Direction direction_to = rc.getLocation().directionTo(target_location);
+            if (rc.canAttack(target_location)) {
+                rc.attack(target_location);
             }
-            else {
-                if (rc.canAttack(target_location)) {
-                    rc.attack(target_location);
-                }
+            else if (rc.canMove(direction_to)) {
+                rc.move(direction_to);
+            }
+            else if (nearby_enemy != null && rc.canAttack(nearby_enemy.location)) {
+                rc.attack(nearby_enemy.location);
             }
         }
         else { // or move in a line if no target
@@ -236,7 +242,7 @@ public strictfp class RobotPlayer {
                 saved_direction = directions[rng.nextInt(directions.length)];
             }
         }
-        
+
         rc.setIndicatorString(Integer.toString(target_x) + " " + Integer.toString(target_y) + " " + Integer.toString(target_priority));
     }
 }
