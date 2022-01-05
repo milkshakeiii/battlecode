@@ -236,5 +236,7 @@ public strictfp class RobotPlayer {
                 saved_direction = directions[rng.nextInt(directions.length)];
             }
         }
+        
+        rc.setIndicatorString(Integer.toString(target_x) + " " + Integer.toString(target_y) + " " + Integer.toString(target_priority));
     }
 }
