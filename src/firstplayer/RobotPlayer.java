@@ -11,7 +11,7 @@ import java.util.Random;
  */
 public strictfp class RobotPlayer {
 
-    static int NONE_SENTINEL = 65535;
+    static final int NONE_SENTINEL = 65535;
 
     /**
      * We will use this variable to count the number of turns this robot has been alive.
@@ -26,7 +26,7 @@ public strictfp class RobotPlayer {
      * import at the top of this file. Here, we *seed* the RNG with a constant number (6147); this makes sure
      * we get the same sequence of numbers every time this code is run. This is very useful for debugging!
      */
-    static final Random rng = new Random(6147);
+    static Random rng;
 
     /** Array containing all the possible movement directions. */
     static final Direction[] directions = {
@@ -40,7 +40,7 @@ public strictfp class RobotPlayer {
         Direction.NORTHWEST,
     };
 
-    static Direction saved_direction = directions[rng.nextInt(directions.length)];
+    static Direction saved_direction;
 
     /**
      * run() is the method that is called when a robot is instantiated in the Battlecode world.
@@ -52,11 +52,16 @@ public strictfp class RobotPlayer {
     @SuppressWarnings("unused")
     public static void run(RobotController rc) throws GameActionException {
 
+
         if (turnCount == 0) {
-            for (int i = 0; i < 64; i++) {
+            // initialize solider shared data
+            for (int i = 0; i < 3; i++) {
                 rc.writeSharedArray(i, NONE_SENTINEL);
             }
         }
+
+        rng = new Random();
+        saved_direction = directions[rng.nextInt(directions.length)];
 
         while (true) {
             // This code runs during the entire lifespan of the robot, which is why it is in an infinite
@@ -132,27 +137,35 @@ public strictfp class RobotPlayer {
      * This code is wrapped inside the infinite loop in run(), so it is called once per turn.
      */
     static void runMiner(RobotController rc) throws GameActionException {
-        // Try to mine on squares around us.
+        // mine nearby lead (but not to exhaustion)
+        Boolean surplus_lead_exists = false;
         MapLocation me = rc.getLocation();
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 MapLocation mineLocation = new MapLocation(me.x + dx, me.y + dy);
-                // Notice that the Miner's action cooldown is very low.
-                // You can mine multiple times per turn!
-                while (rc.canMineGold(mineLocation)) {
-                    rc.mineGold(mineLocation);
-                }
-                while (rc.canMineLead(mineLocation)) {
+                Boolean surplus_lead_exists_here = rc.onTheMap(mineLocation) && rc.senseLead(mineLocation) > 1;
+                while (rc.canMineLead(mineLocation) && surplus_lead_exists_here) {
                     rc.mineLead(mineLocation);
+                    surplus_lead_exists_here = rc.onTheMap(mineLocation) && rc.senseLead(mineLocation) > 1;
                 }
+                surplus_lead_exists = surplus_lead_exists || surplus_lead_exists_here;
             }
         }
 
-        // Also try to move randomly.
-        Direction dir = directions[rng.nextInt(directions.length)];
-        if (rc.canMove(dir)) {
-            rc.move(dir);
-            // System.out.println("I moved!");
+        // stay away from other miners and look for lead
+        RobotInfo[] allies = rc.senseNearbyRobots(rc.getType().actionRadiusSquared, rc.getTeam());
+        MapLocation nearby_miner = null;
+        for (int i = 0; i < allies.length; i++) {
+            RobotInfo ally = allies[i];
+            if (ally.getType() == RobotType.MINER) {
+                nearby_miner = ally.location;
+            }
+        }
+        if (nearby_miner != null || (!surplus_lead_exists)) {
+            Direction random_direction = directions[rng.nextInt(directions.length)];
+            if (rc.canMove(random_direction)) {
+                rc.move(random_direction);
+            }
         }
     }
 
@@ -243,6 +256,6 @@ public strictfp class RobotPlayer {
             }
         }
 
-        rc.setIndicatorString(Integer.toString(target_x) + " " + Integer.toString(target_y) + " " + Integer.toString(target_priority));
+        rc.setIndicatorString((target_x) + " " + (target_y) + " " + (target_priority));
     }
 }
